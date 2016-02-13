@@ -4,7 +4,6 @@ using System.Data;
 using System.Linq;
 using DbUp.Engine.Output;
 using DbUp.Engine.Transactions;
-using Devart.Data.Oracle;
 
 namespace OracleSampleApplication
 {

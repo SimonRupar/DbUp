@@ -5,9 +5,6 @@ using System.Text;
 
 namespace DbUp.Support
 {
-    /// <summary>
-    /// Object name parser options
-    /// </summary>
     public enum ObjectNameOptions
     {
         /// <summary>

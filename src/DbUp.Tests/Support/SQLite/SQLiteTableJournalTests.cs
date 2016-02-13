@@ -4,8 +4,8 @@ using System.Data.SQLite;
 using DbUp.Engine;
 using DbUp.Engine.Output;
 using DbUp.Engine.Transactions;
-using DbUp.SQLite.Engine;
-using DbUp.Support.SqlServer;
+using DbUp.Support.SQLite;
+using DbUp.Tests.TestInfrastructure;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -22,11 +22,9 @@ namespace DbUp.Tests.Support.SQLite
             var command = Substitute.For<IDbCommand>();
             dbConnection.CreateCommand().Returns(command);
             var connectionManager = Substitute.For<IConnectionManager>();
-            connectionManager.SqlContainer.Returns(Substitute.For<SqlStatementsContainer>());
-
             command.ExecuteScalar().Returns(x => { throw new SQLiteException("table not found"); });
             var consoleUpgradeLog = new ConsoleUpgradeLog();
-            var journal = new TableJournal(() => connectionManager, () => consoleUpgradeLog);
+            var journal = new SQLiteTableJournal(() => connectionManager, () => consoleUpgradeLog, "SchemaVersions");
 
             // When
             var scripts = journal.GetExecutedScripts();
@@ -49,7 +47,7 @@ namespace DbUp.Tests.Support.SQLite
             command.CreateParameter().Returns(param1, param2);
             command.ExecuteScalar().Returns(x => { throw new SQLiteException("table not found"); });
             var consoleUpgradeLog = new ConsoleUpgradeLog();
-            var journal = new TableJournal(() => connectionManager, () => consoleUpgradeLog);
+            var journal = new SQLiteTableJournal(() => connectionManager, () => consoleUpgradeLog, "SchemaVersions");
 
             // When
             journal.StoreExecutedScript(new SqlScript("test", "select 1"));

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Data.SqlClient;
+using DbUp.Engine;
 using NDesk.Options;
 
 namespace DbUp.Console
@@ -17,11 +18,13 @@ namespace DbUp.Console
             var connectionString = "";
 
             bool show_help = false;
+            bool ensure_database = false;
 
             var optionSet = new OptionSet() {
                 { "s|server=", "the SQL Server host", s => server = s },
                 { "db|database=", "database to upgrade", d => database = d},
                 { "d|directory=", "directory containing SQL Update files", dir => directory = dir },
+                { "e|ensure", "ensure datbase exists", e => ensure_database = e != null },
                 { "u|user=", "Database username", u => username = u},
                 { "p|password=", "Database password", p => password = p},
                 { "cs|connectionString=", "Full connection string", cs => connectionString = cs},
@@ -53,13 +56,20 @@ namespace DbUp.Console
                 .WithScriptsFromFileSystem(directory)
                 .Build();
 
+            DatabaseUpgradeResult result = null;
             if (!mark)
             {
-                dbup.PerformUpgrade();
+                if (ensure_database) EnsureDatabase.For.SqlDatabase(connectionString);
+                result = dbup.PerformUpgrade();
             }
             else
             {
-                dbup.MarkAsExecuted();
+                result = dbup.MarkAsExecuted();
+            }
+
+            if (!result.Successful)
+            {
+                Environment.ExitCode = 1;
             }
         }
 

@@ -23,15 +23,5 @@ namespace DbUp.Helpers
         /// <param name="script"></param>
         public void StoreExecutedScript(SqlScript script)
         { }
-
-        /// <summary>
-        /// Not implemented yet!
-        /// </summary>
-        /// <param name="script"></param>
-        /// <returns></returns>
-        public bool ValidateScript(SqlScript script)
-        {
-            return true;
-        }
     }
 }

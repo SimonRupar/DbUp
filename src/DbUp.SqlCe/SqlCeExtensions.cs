@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Data.SqlServerCe;
+using DbUp;
 using DbUp.Builder;
 using DbUp.Engine.Transactions;
 using DbUp.SqlCe;
 using DbUp.Support.SqlServer;
-using DbUp.SqlCe.Engine;
 
 /// <summary>
 /// Configuration extension methods for SQL CE.
@@ -43,13 +43,12 @@ public static class SqlCeExtensions
         return SqlCeDatabase(new SqlCeConnectionManager(connectionString));
     }
 
-    private static UpgradeEngineBuilder SqlCeDatabase(IConnectionManager connectionManager, string journalTableName = "SchemaVersions")
+    private static UpgradeEngineBuilder SqlCeDatabase(IConnectionManager connectionManager)
     {
         var builder = new UpgradeEngineBuilder();
         builder.Configure(c => c.ConnectionManager = connectionManager);
-        builder.Configure(c => c.ConnectionManager.SetSqlContainerParameters(journalTableName, null));
-        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log, () => c.VariablesEnabled, c.ScriptPreprocessors));
-        builder.Configure(c => c.Journal = new TableJournal(() => connectionManager, () => c.Log));
+        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log, null, () => c.VariablesEnabled, c.ScriptPreprocessors));
+        builder.Configure(c => c.Journal = new SqlTableJournal(()=>connectionManager, ()=>c.Log, null, "SchemaVersions"));
         builder.WithPreprocessor(new SqlCePreprocessor());
         return builder;
     }

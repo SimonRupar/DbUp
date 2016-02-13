@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Data;
 using DbUp.Engine.Output;
 
@@ -10,24 +11,26 @@ namespace DbUp.Engine.Transactions
     /// </summary>
     public abstract class DatabaseConnectionManager : IConnectionManager
     {
+        private readonly IConnectionFactory connectionFactory;
         private ITransactionStrategy transactionStrategy;
         private readonly Dictionary<TransactionMode, Func<ITransactionStrategy>> transactionStrategyFactory;
         private IDbConnection upgradeConnection;
-        /// <summary>
-        /// Connection string
-        /// </summary>
-        public string ConnectionString { get; set; }
-
-        /// <summary>
-        /// Container of sql statements for each implementation of database type
-        /// </summary>
-        public SqlStatementsContainer SqlContainer { get; protected set; } 
+        private IConnectionFactory connectionFactoryOverride;
 
         /// <summary>
         /// Manages Database Connections
         /// </summary>
-        protected DatabaseConnectionManager()
+        protected DatabaseConnectionManager(Func<IUpgradeLog, IDbConnection> connectionFactory) : this(new DelegateConnectionFactory(connectionFactory))
         {
+        }
+
+        /// <summary>
+        /// Manages Database Connections
+        /// </summary>
+        protected DatabaseConnectionManager(IConnectionFactory connectionFactory)
+        {
+            this.connectionFactory = connectionFactory;
+            TransactionMode = TransactionMode.NoTransaction;
             transactionStrategyFactory = new Dictionary<TransactionMode, Func<ITransactionStrategy>>
             {
                 {TransactionMode.NoTransaction, ()=>new NoTransactionStrategy()},
@@ -35,11 +38,6 @@ namespace DbUp.Engine.Transactions
                 {TransactionMode.TransactionPerScript, ()=>new TransactionPerScriptStrategy()}
             };
         }
-
-        /// <summary>
-        /// Creates a database connection for the current database engine
-        /// </summary>
-        protected abstract IDbConnection CreateConnection(IUpgradeLog log);
 
         /// <summary>
         /// Tells the connection manager is starting
@@ -61,6 +59,36 @@ namespace DbUp.Engine.Transactions
                 transactionStrategy = null;
                 upgradeConnection = null;
             });
+        }
+
+        /// <summary>
+        /// Tries to connect to the database.
+        /// </summary>
+        public bool TryConnect(IUpgradeLog upgradeLog, out string errorMessage)
+        {
+            try
+            {
+                errorMessage = "";
+                upgradeConnection = CreateConnection(upgradeLog);
+                if (upgradeConnection.State == ConnectionState.Closed)
+                    upgradeConnection.Open();
+                var strategy = transactionStrategyFactory[TransactionMode.NoTransaction]();
+                strategy.Initialise(upgradeConnection, upgradeLog, new List<SqlScript>());
+                strategy.Execute(dbCommandFactory =>
+                {
+                    using (var command = dbCommandFactory())
+                    {
+                        command.CommandText = "select 1";
+                        command.ExecuteScalar();
+                    }
+                });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
         }
 
         /// <summary>
@@ -100,14 +128,15 @@ namespace DbUp.Engine.Transactions
         /// <returns>A list of SQL Commands</returns>
         public abstract IEnumerable<string> SplitScriptIntoCommands(string scriptContents);
 
-        /// <summary>
-        /// Set journalingTableName and scheme for specific connection. 
-        /// </summary>
-        /// <param name="journalingTable">Name of journaling table</param>
-        /// <param name="scheme">Scheme of Journaling table</param>
-        public void SetSqlContainerParameters(string journalingTable, string scheme)
+        public IDisposable OverrideFactoryForTest(IConnectionFactory connectionFactory)
         {
-            this.SqlContainer.SetParameters(scheme, journalingTable);
+            connectionFactoryOverride = connectionFactory;
+            return new DelegateDisposable(() => this.connectionFactoryOverride = null);
+        }
+
+        private IDbConnection CreateConnection(IUpgradeLog upgradeLog)
+        {
+            return (connectionFactoryOverride ?? connectionFactory).CreateConnection(upgradeLog, this);
         }
     }
 }

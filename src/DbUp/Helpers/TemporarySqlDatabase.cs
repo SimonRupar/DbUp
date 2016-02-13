@@ -28,7 +28,6 @@ namespace DbUp.Helpers
         /// Initializes a new instance of the <see cref="TemporarySqlDatabase"/> class.
         /// </summary>
         /// <param name="name">The name.</param>
-        /// <param name="instanceName">Instance name</param>
         public TemporarySqlDatabase(string name, string instanceName)
         {
             databaseName = name;

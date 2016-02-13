@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Text.RegularExpressions;
 using DbUp.Engine.Output;
 using DbUp.Support.SqlServer;
 
@@ -13,9 +11,7 @@ namespace DbUp.Engine.Transactions
     /// </summary>
     public class LegacySqlConnectionManager : IConnectionManager
     {
-        private readonly Func<IDbConnection> connectionFactory;        
-
-        public SqlStatementsContainer SqlContainer { get; private set; }
+        private readonly Func<IDbConnection> connectionFactory;
 
         /// <summary>
         /// Ctor for LegacySqlConnectionManager
@@ -24,7 +20,6 @@ namespace DbUp.Engine.Transactions
         public LegacySqlConnectionManager(Func<IDbConnection> connectionFactory)
         {
             this.connectionFactory = connectionFactory;
-            SqlContainer = new SqlServerStatementsContainer();
         }
 
         public IDisposable OperationStarting(IUpgradeLog upgradeLog, List<SqlScript> executedScripts)
@@ -32,12 +27,37 @@ namespace DbUp.Engine.Transactions
             return new DoNothingDisposible();
         }
 
+        /// <summary>
+        /// Tries to connect to the database.
+        /// </summary>
+        public bool TryConnect(IUpgradeLog upgradeLog, out string errorMessage)
+        {
+            try
+            {
+                errorMessage = "";
+                ExecuteCommandsWithManagedConnection(dbCommandFactory =>
+                {
+                    using (var command = dbCommandFactory())
+                    {
+                        command.CommandText = "select 1";
+                        command.ExecuteScalar();
+                    }
+                });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
         public void ExecuteCommandsWithManagedConnection(Action<Func<IDbCommand>> action)
         {
             using (var connection = connectionFactory())
             {
                 connection.Open();
-                action(()=>connection.CreateCommand());
+                action(() => connection.CreateCommand());
             }
         }
 
@@ -46,7 +66,7 @@ namespace DbUp.Engine.Transactions
             using (var connection = connectionFactory())
             {
                 connection.Open();
-                return actionWithResult(()=>connection.CreateCommand());
+                return actionWithResult(() => connection.CreateCommand());
             }
         }
 
@@ -58,7 +78,7 @@ namespace DbUp.Engine.Transactions
         {
             var commandSplitter = new SqlCommandSplitter();
             var scriptStatements = commandSplitter.SplitScriptIntoCommands(scriptContents);
-            return scriptStatements;           
+            return scriptStatements;
         }
 
         class DoNothingDisposible : IDisposable
@@ -67,12 +87,6 @@ namespace DbUp.Engine.Transactions
             {
 
             }
-        }
-
-        public void SetSqlContainerParameters(string journalingTable, string scheme)
-        {
-            this.SqlContainer.TableName = journalingTable;
-            this.SqlContainer.Scheme = scheme;
         }
     }
 }

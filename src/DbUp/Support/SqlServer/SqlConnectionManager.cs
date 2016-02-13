@@ -1,10 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Data.SqlClient;
-using System.Linq;
-using System.Text.RegularExpressions;
-using DbUp.Engine.Output;
 using DbUp.Engine.Transactions;
 
 namespace DbUp.Support.SqlServer
@@ -14,36 +10,23 @@ namespace DbUp.Support.SqlServer
     /// </summary>
     public class SqlConnectionManager : DatabaseConnectionManager
     {
-        private readonly string connectionString;
-
         /// <summary>
         /// Manages Sql Database Connections
         /// </summary>
         /// <param name="connectionString"></param>
         public SqlConnectionManager(string connectionString)
+            : base(new DelegateConnectionFactory((log, dbManager) =>
+            {
+                var conn = new SqlConnection(connectionString);
+
+                if (dbManager.IsScriptOutputLogged)
+                    conn.InfoMessage += (sender, e) => log.WriteInformation(e.Message + "\r\n");
+
+                return conn;
+            }))
         {
-            this.connectionString = connectionString;
-            this.SqlContainer = new SqlServerStatementsContainer();
         }
 
-        /// <summary>
-        /// Creates a database connection for the Microsoft SQL Server
-        /// </summary>
-        protected override IDbConnection CreateConnection(IUpgradeLog log)
-        {
-            var conn = new SqlConnection(connectionString);
-
-            if(this.IsScriptOutputLogged)
-                conn.InfoMessage += (sender, e) => log.WriteInformation(e.Message + "\r\n");
-
-            return conn;
-        }
-
-        /// <summary>
-        /// Split sql statements from mssql script
-        /// </summary>
-        /// <param name="scriptContents"></param>
-        /// <returns></returns>
         public override IEnumerable<string> SplitScriptIntoCommands(string scriptContents)
         {
             var commandSplitter = new SqlCommandSplitter();

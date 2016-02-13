@@ -33,11 +33,6 @@ namespace DbUp.Engine.Transactions
         TransactionMode TransactionMode { get; set; }
 
         /// <summary>
-        /// Container which holds sql statments for specific implementation.
-        /// </summary>
-        SqlStatementsContainer SqlContainer { get; }
-
-        /// <summary>
         /// Specifies whether the db script output should be logged
         /// </summary>
         bool IsScriptOutputLogged { get; set; }
@@ -50,10 +45,8 @@ namespace DbUp.Engine.Transactions
         IEnumerable<string> SplitScriptIntoCommands(string scriptContents);
 
         /// <summary>
-        /// Set journalingTableName and scheme for specific sql container containing sql statements. 
-        /// </summary>
-        /// <param name="journalingTable">Name of journaling table</param>
-        /// <param name="scheme">Scheme of Journaling table</param>
-        void SetSqlContainerParameters(string journalingTable, string scheme);
+        /// Tries to connect to the database.
+        /// </summary> 
+        bool TryConnect(IUpgradeLog upgradeLog, out string errorMessage);
     }
 }

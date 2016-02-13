@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
+using System.Text;
+using DbUp;
 using DbUp.Builder;
 using DbUp.Engine;
 using DbUp.Engine.Output;
@@ -45,16 +46,12 @@ public static class StandardExtensions
     }
 
     /// <summary>
-    /// Specifies whether the db script output should be logged. 
-    /// NOTE: Also failed sql statement will be shown in log. 
+    /// Logs to the console using pretty colours.
     /// </summary>
     /// <param name="builder">The builder.</param>
     /// <returns>
     /// The same builder
     /// </returns>
-    /// <remarks>
-    /// This is also intended for diagnostic error logging.
-    /// </remarks>
     public static UpgradeEngineBuilder LogScriptOutput(this UpgradeEngineBuilder builder)
     {
         builder.Configure(c => c.ConnectionManager.IsScriptOutputLogged = true);
@@ -71,6 +68,18 @@ public static class StandardExtensions
     public static UpgradeEngineBuilder LogToTrace(this UpgradeEngineBuilder builder)
     {
         return LogTo(builder, new TraceUpgradeLog());
+    }
+
+    /// <summary>
+    /// Logs to SqlContext.Pipe, for use with "context connection=true".
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder LogToSqlContext(this UpgradeEngineBuilder builder)
+    {
+        return LogTo(builder, new SqlContextUpgradeLog());
     }
 
     /// <summary>
@@ -156,10 +165,10 @@ public static class StandardExtensions
     }
 
     /// <summary>
-    /// Adds all scripts from absolute path to folder on the file system.
+    /// Adds all scripts from a folder on the file system.
     /// </summary>
     /// <param name="builder">The builder.</param>
-    /// <param name="path">Absolute path to the directory path.</param>
+    /// <param name="path">The directory path.</param>
     /// <returns>
     /// The same builder
     /// </returns>
@@ -169,17 +178,46 @@ public static class StandardExtensions
     }
 
     /// <summary>
-    /// Adds all scripts from relative path to folder on the file system.
+    /// Adds all scripts from a folder on the file system, with a custom filter.
     /// </summary>
     /// <param name="builder">The builder.</param>
-    /// <param name="relativePath">Relative path to directory.</param>
-    /// <returns></returns>
-    public static UpgradeEngineBuilder WithScriptsFromFileSystemRelative(this UpgradeEngineBuilder builder, string relativePath)
+    /// <param name="path">The directory path.</param>
+    /// <param name="filter">The filter. Use the static <see cref="Filters"/> class to get some pre-defined filters.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsFromFileSystem(this UpgradeEngineBuilder builder, string path, Func<string, bool> filter)
     {
-        string executionDirPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-        if (String.IsNullOrEmpty(executionDirPath)) return null;
-        string path = Path.GetFullPath(executionDirPath +relativePath);
-        return WithScripts(builder, new FileSystemScriptProvider(path));
+        return WithScripts(builder, new FileSystemScriptProvider(path, filter));
+    }
+
+    /// <summary>
+    /// Adds all scripts from a folder on the file system, with custom encoding.
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="path">The directory path.</param>
+    /// <param name="encoding">The encoding.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsFromFileSystem(this UpgradeEngineBuilder builder, string path, Encoding encoding)
+    {
+        return WithScripts(builder, new FileSystemScriptProvider(path, encoding));
+    }
+
+    /// <summary>
+    /// Adds all scripts from a folder on the file system, with a custom filter and custom encoding.
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="path">The directory path.</param>
+    /// <param name="filter">The filter. Use the static <see cref="Filters"/> class to get some pre-defined filters.</param>
+    /// <param name="encoding">The encoding.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsFromFileSystem(this UpgradeEngineBuilder builder, string path, Func<string, bool> filter, Encoding encoding)
+    {
+        return WithScripts(builder, new FileSystemScriptProvider(path, filter, encoding));
     }
 
     /// <summary>
@@ -193,6 +231,35 @@ public static class StandardExtensions
     public static UpgradeEngineBuilder WithScriptsEmbeddedInAssembly(this UpgradeEngineBuilder builder, Assembly assembly)
     {
         return WithScripts(builder, new EmbeddedScriptProvider(assembly, s => s.EndsWith(".sql", StringComparison.InvariantCultureIgnoreCase)));
+    }
+
+    /// <summary>
+    /// Adds all scripts found as embedded resources in the given assembly, with custom encoding.
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="assembly">The assembly.</param>
+    /// <param name="encoding">The encoding.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsEmbeddedInAssembly(this UpgradeEngineBuilder builder, Assembly assembly, Encoding encoding)
+    {
+        return WithScripts(builder, new EmbeddedScriptProvider(assembly, s => s.EndsWith(".sql", StringComparison.InvariantCultureIgnoreCase), encoding));
+    }
+
+    /// <summary>
+    /// Adds all scripts found as embedded resources in the given assembly, with custom encoding and with a custom filter (you'll need to exclude non- .SQL files yourself).
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="assembly">The assembly.</param>
+    /// <param name="filter">The filter. Don't forget to ignore any non- .SQL files.</param>
+    /// <param name="encoding">The encoding.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsEmbeddedInAssembly(this UpgradeEngineBuilder builder, Assembly assembly, Func<string, bool> filter, Encoding encoding)
+    {
+        return WithScripts(builder, new EmbeddedScriptProvider(assembly, filter, encoding));
     }
 
     /// <summary>
@@ -333,7 +400,7 @@ public static class StandardExtensions
 
         return builder;
     }
-    
+
     /// <summary>
     /// Run DbUp in a single transaction
     /// </summary>
@@ -341,7 +408,7 @@ public static class StandardExtensions
     /// <returns></returns>
     public static UpgradeEngineBuilder WithTransaction(this UpgradeEngineBuilder builder)
     {
-        builder.Configure(c=>c.ConnectionManager.TransactionMode = TransactionMode.SingleTransaction);
+        builder.Configure(c => c.ConnectionManager.TransactionMode = TransactionMode.SingleTransaction);
 
         return builder;
     }
@@ -358,4 +425,59 @@ public static class StandardExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Adds all scripts ending in '.sql' found as embedded resources in the given assemblies, using the default <see cref="Encoding" />.
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="assemblies">The assemblies.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsEmbeddedInAssemblies(this UpgradeEngineBuilder builder, Assembly[] assemblies)
+    {
+        return WithScriptsEmbeddedInAssemblies(builder, assemblies, s => s.EndsWith(".sql", StringComparison.InvariantCultureIgnoreCase));
+    }
+
+    /// <summary>
+    /// Adds all scripts matching the specified filter found as embedded resources in the given assemblies, using the default <see cref="Encoding" />.
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="assemblies">The assemblies.</param>
+    /// <param name="filter">The filter. Don't forget to ignore any non- .SQL files.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsEmbeddedInAssemblies(this UpgradeEngineBuilder builder, Assembly[] assemblies, Func<string, bool> filter)
+    {
+        return WithScriptsEmbeddedInAssemblies(builder, assemblies, filter, Encoding.Default);
+    }
+
+    /// <summary>
+    /// Adds all scripts ending in '.sql' found as embedded resources in the given assemblies, using the specified <see cref="Encoding" />.
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="assemblies">The assemblies.</param>
+    /// <param name="encoding">The encoding.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsEmbeddedInAssemblies(this UpgradeEngineBuilder builder, Assembly[] assemblies, Encoding encoding)
+    {
+        return WithScriptsEmbeddedInAssemblies(builder, assemblies, s => s.EndsWith(".sql", StringComparison.InvariantCultureIgnoreCase), encoding);
+    }
+
+    /// <summary>
+    /// Adds all scripts found as embedded resources in the given assemblies, with a custom filter (you'll need to exclude non- .SQL files yourself).
+    /// </summary>
+    /// <param name="builder">The builder.</param>
+    /// <param name="assemblies">The assemblies.</param>
+    /// <param name="filter">The filter. Don't forget to ignore any non- .SQL files.</param>
+    /// <param name="encoding">The encoding.</param>
+    /// <returns>
+    /// The same builder
+    /// </returns>
+    public static UpgradeEngineBuilder WithScriptsEmbeddedInAssemblies(this UpgradeEngineBuilder builder, Assembly[] assemblies, Func<string, bool> filter, Encoding encoding)
+    {
+        return WithScripts(builder, new EmbeddedScriptsProvider(assemblies, filter, encoding));
+    }
 }

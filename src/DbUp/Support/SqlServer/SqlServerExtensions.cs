@@ -1,6 +1,11 @@
 ﻿using System;
 using System.Data;
+using System.Data.SqlClient;
+using System.Diagnostics;
+using System.Text;
+using DbUp;
 using DbUp.Builder;
+using DbUp.Engine.Output;
 using DbUp.Engine.Transactions;
 using DbUp.Support.SqlServer;
 
@@ -71,30 +76,17 @@ public static class SqlServerExtensions
     }
 
     /// <summary>
-    /// Creates an upgrader for SQL Server databases.
+    /// 
     /// </summary>
-    /// <param name="connectionManager">ConnectionManager</param>
-    /// <param name="schema">The SQL schema name to use. Defaults to 'dbo'.</param>
+    /// <param name="connectionManager"></param>
+    /// <param name="schema"></param>
     /// <returns></returns>
     private static UpgradeEngineBuilder SqlDatabase(IConnectionManager connectionManager, string schema)
     {
-        return SqlDatabase(connectionManager, schema, "SchemaVersions");
-    }
-
-    /// <summary>
-    /// Creates an upgrader for SQL Server databases.
-    /// </summary>
-    /// <param name="connectionManager">ConnectionManager</param>
-    /// <param name="schema">The SQL schema name to use. Defaults to 'dbo'.</param>
-    /// <param name="journalTableName">Name of table for journaling changes.</param>
-    /// <returns></returns>
-    private static UpgradeEngineBuilder SqlDatabase(IConnectionManager connectionManager, string schema = null, string journalTableName = "SchemaVersions")
-    {
         var builder = new UpgradeEngineBuilder();
         builder.Configure(c => c.ConnectionManager = connectionManager);
-        builder.Configure(c => c.ConnectionManager.SetSqlContainerParameters(journalTableName, schema));
-        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log, () => c.VariablesEnabled, c.ScriptPreprocessors));
-        builder.Configure(c => c.Journal = new TableJournal(() => c.ConnectionManager, () => c.Log));
+        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log, schema, () => c.VariablesEnabled, c.ScriptPreprocessors));
+        builder.Configure(c => c.Journal = new SqlTableJournal(()=>c.ConnectionManager, ()=>c.Log, schema, "SchemaVersions"));
         return builder;
     }
 
@@ -103,13 +95,106 @@ public static class SqlServerExtensions
     /// </summary>
     /// <param name="builder">The builder.</param>
     /// <param name="schema">The schema.</param>
-    /// <param name="journalTableName">The table.</param>
+    /// <param name="table">The table.</param>
     /// <returns></returns>
-    public static UpgradeEngineBuilder JournalToSqlTable(this UpgradeEngineBuilder builder, string schema, string journalTableName)
+    public static UpgradeEngineBuilder JournalToSqlTable(this UpgradeEngineBuilder builder, string schema, string table)
     {
-        builder.Configure(c => c.ConnectionManager.SetSqlContainerParameters(journalTableName, schema));
-        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log, () => c.VariablesEnabled, c.ScriptPreprocessors));
-        builder.Configure(c => c.Journal = new TableJournal(()=>c.ConnectionManager, ()=>c.Log));
+        builder.Configure(c => c.Journal = new SqlTableJournal(()=>c.ConnectionManager, ()=>c.Log, schema, table));
         return builder;
     }
+
+    /// <summary>
+    /// Ensures that the database specified in the connection string exists.
+    /// </summary>
+    /// <param name="supported">Fluent helper type.</param>
+    /// <param name="connectionString">The connection string.</param>
+    /// <returns></returns>
+    public static void SqlDatabase(this SupportedDatabasesForEnsureDatabase supported, string connectionString)
+    {
+        SqlDatabase(supported, connectionString, new ConsoleUpgradeLog());
+    }
+
+    /// <summary>
+    /// Ensures that the database specified in the connection string exists.
+    /// </summary>
+    /// <param name="supported">Fluent helper type.</param>
+    /// <param name="connectionString">The connection string.</param>
+    /// <param name="logger">The <see cref="DbUp.Engine.Output.IUpgradeLog"/> used to record actions.</param>
+    /// <returns></returns>
+    public static void SqlDatabase(this SupportedDatabasesForEnsureDatabase supported, string connectionString, IUpgradeLog logger)
+    {
+        if (supported == null) throw new ArgumentNullException("supported");
+        
+        if (string.IsNullOrEmpty(connectionString) || connectionString.Trim() == string.Empty)
+        {
+            throw new ArgumentNullException("connectionString");
+        }
+
+        if (logger == null) throw new ArgumentNullException("logger");
+
+        var masterConnectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
+
+        var databaseName = masterConnectionStringBuilder.InitialCatalog;
+
+        if (string.IsNullOrEmpty(databaseName) || databaseName.Trim() == string.Empty)
+        {
+            throw new InvalidOperationException("The connection string does not specify a database name.");
+        }
+
+        masterConnectionStringBuilder.InitialCatalog = "master";
+
+        var logMasterConnectionStringBuilder = new SqlConnectionStringBuilder(masterConnectionStringBuilder.ConnectionString)
+        {
+            Password = String.Empty.PadRight(masterConnectionStringBuilder.Password.Length,'*')
+        };
+        
+        logger.WriteInformation("Master ConnectionString => {0}", logMasterConnectionStringBuilder.ConnectionString);
+
+        using (var connection = new SqlConnection(masterConnectionStringBuilder.ConnectionString))
+        {
+            connection.Open();
+            
+            var sqlCommandText = string.Format
+                (
+                    @"SELECT TOP 1 case WHEN dbid IS NOT NULL THEN 1 ELSE 0 end FROM sys.sysdatabases WHERE name = '{0}';",
+                    databaseName
+                );
+
+
+            // check to see if the database already exists..
+            using (var command = new SqlCommand(sqlCommandText, connection)
+            {
+                CommandType = CommandType.Text
+            })
+            {
+                var results = (int?)command.ExecuteScalar();
+
+                // if the database exists, we're done here...
+                if (results.HasValue && results.Value == 1)
+                {
+                    return;
+                }
+            }
+
+            sqlCommandText = string.Format
+                    (
+                        @"create database [{0}];",
+                        databaseName
+                    );
+
+            // Create the database...
+            using (var command = new SqlCommand(sqlCommandText, connection)
+            {
+                CommandType = CommandType.Text
+            })
+            {
+                command.ExecuteNonQuery();
+
+            }
+
+            logger.WriteInformation(@"Created database {0}", databaseName);
+        }
+    }
+
+
 }

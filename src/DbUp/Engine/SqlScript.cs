@@ -1,4 +1,6 @@
-﻿using System.IO;
+﻿
+using System;
+using System.IO;
 using System.Text;
 
 namespace DbUp.Engine
@@ -6,6 +8,7 @@ namespace DbUp.Engine
     /// <summary>
     /// Represents a SQL Server script that comes from an embedded resource in an assembly. 
     /// </summary>
+    [System.Diagnostics.DebuggerDisplay("{Name}")]
     public class SqlScript
     {
         private readonly string contents;
@@ -41,28 +44,51 @@ namespace DbUp.Engine
         }
 
         /// <summary>
-        /// Create SqlScript from file on location
+        /// Create a SqlScript from a file using Default encoding
         /// </summary>
-        /// <param name="path">Full path location of file.</param>
-        /// <returns>New SqlScript instance from file.</returns>
+        /// <param name="path"></param>
+        /// <returns></returns>
         public static SqlScript FromFile(string path)
+        {
+            return FromFile(path, Encoding.Default);
+        }
+
+        /// <summary>
+        /// Create a SqlScript from a file using specified encoding
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="encoding"></param>
+        /// <returns></returns>
+        public static SqlScript FromFile(string path, Encoding encoding)
         {
             using (FileStream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read))
             {
                 var fileName = new FileInfo(path).Name;
-                return FromStream(fileName, fileStream);
+                return FromStream(fileName, fileStream, encoding);
             }
         }
 
         /// <summary>
-        /// Create SqlScript from Stream
+        /// Create a SqlScript from a stream using Default encoding
         /// </summary>
-        /// <param name="scriptName">Name of script to get from stream</param>
-        /// <param name="stream">SqlScript stream</param>
-        /// <returns>New SqlScript instance from stream.</returns>
+        /// <param name="scriptName"></param>
+        /// <param name="stream"></param>
+        /// <returns></returns>
         public static SqlScript FromStream(string scriptName, Stream stream)
         {
-            using (var resourceStreamReader = new StreamReader(stream, Encoding.Default, true))
+            return FromStream(scriptName, stream, Encoding.Default);
+        }
+
+        /// <summary>
+        /// Create a SqlScript from a stream using specified encoding
+        /// </summary>
+        /// <param name="scriptName"></param>
+        /// <param name="stream"></param>
+        /// <param name="encoding"></param>
+        /// <returns></returns>
+        public static SqlScript FromStream(string scriptName, Stream stream, Encoding encoding)
+        {
+            using (var resourceStreamReader = new StreamReader(stream, encoding, true))
             {
                 string c = resourceStreamReader.ReadToEnd();
                 return new SqlScript(scriptName, c);

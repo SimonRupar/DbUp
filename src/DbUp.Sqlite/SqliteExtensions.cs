@@ -1,9 +1,10 @@
 ﻿using System;
+using DbUp;
 using DbUp.Builder;
-using DbUp.SQLite;
 using DbUp.SQLite.Helpers;
+using DbUp.Support.SQLite;
+using DbUp.SQLite;
 using DbUp.Support.SqlServer;
-using DbUp.SQLite.Engine;
 
 /// <summary>
 /// Configuration extension methods for SQLite (see http://www.sqlite.org/)
@@ -25,25 +26,10 @@ public static class SQLiteExtensions
     /// </returns>
     public static UpgradeEngineBuilder SQLiteDatabase(this SupportedDatabases supported, string connectionString)
     {
-        return SQLiteDatabase(supported, connectionString, "SchemaVersions");
-    }
-
-    /// <summary>
-    /// Creates an upgrader for SQLite databases.
-    /// </summary>
-    /// <param name="supported">Fluent helper type.</param>
-    /// <param name="connectionString">SQLite database connection string</param>
-    /// <param name="journalTableName">Name of journaling table.</param>
-    /// <returns>
-    /// A builder for a database upgrader designed for SQLite databases.
-    /// </returns>
-    public static UpgradeEngineBuilder SQLiteDatabase(this SupportedDatabases supported, string connectionString, string journalTableName) {
         var builder = new UpgradeEngineBuilder();
-        var connectionManager = new SQLiteConnectionManager(connectionString);
-        builder.Configure(c => c.ConnectionManager = connectionManager);
-        builder.Configure(c => c.ConnectionManager.SetSqlContainerParameters(journalTableName, null));
-        builder.Configure(c => c.Journal = new TableJournal(() => c.ConnectionManager, () => c.Log));
-        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log,
+        builder.Configure(c => c.ConnectionManager = new SQLiteConnectionManager(connectionString));
+        builder.Configure(c => c.Journal = new SQLiteTableJournal(() => c.ConnectionManager, () => c.Log, "SchemaVersions"));
+        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log, null,
             () => c.VariablesEnabled, c.ScriptPreprocessors));
         builder.WithPreprocessor(new SQLitePreprocessor());
         return builder;
@@ -59,25 +45,10 @@ public static class SQLiteExtensions
     /// </returns>
     public static UpgradeEngineBuilder SQLiteDatabase(this SupportedDatabases supported, SharedConnection sharedConnection)
     {
-        return SQLiteDatabase(supported, sharedConnection, "SchemaVersions");
-    }
-
-    /// <summary>
-    /// Creates an upgrader for SQLite databases.
-    /// </summary>
-    /// <param name="supported">Fluent helper type.</param>
-    /// <param name="sharedConnection">SQLite database connection which you control when it is closed</param>
-    /// <param name="journalTableName">Name of journaling table.</param>
-    /// <returns>
-    /// A builder for a database upgrader designed for SQLite databases.
-    /// </returns>
-    public static UpgradeEngineBuilder SQLiteDatabase(this SupportedDatabases supported, SharedConnection sharedConnection, string journalTableName) {
         var builder = new UpgradeEngineBuilder();
-        var connectionManager = new SQLiteConnectionManager(sharedConnection);
-        builder.Configure(c => c.ConnectionManager = connectionManager);
-        builder.Configure(c => c.ConnectionManager.SetSqlContainerParameters(journalTableName, null));
-        builder.Configure(c => c.Journal = new TableJournal(() => c.ConnectionManager, () => c.Log));
-        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log,
+        builder.Configure(c => c.ConnectionManager = new SQLiteConnectionManager(sharedConnection));
+        builder.Configure(c => c.Journal = new SQLiteTableJournal(() => c.ConnectionManager, () => c.Log, "SchemaVersions"));
+        builder.Configure(c => c.ScriptExecutor = new SqlScriptExecutor(() => c.ConnectionManager, () => c.Log, null,
             () => c.VariablesEnabled, c.ScriptPreprocessors));
         builder.WithPreprocessor(new SQLitePreprocessor());
         return builder;
